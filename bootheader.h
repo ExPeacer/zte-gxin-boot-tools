@@ -26,8 +26,8 @@
 #ifndef __BOOTHEADER__
 #define __BOOTHEADER__
 
-#define CMDLINE_END   						(0x400)
-#define PADDING1_SIZE						(0x1000-0x410)
+#define CMDLINE_END   						(0x600)
+#define PADDING1_SIZE						(0x1200-0x610)
 #define BOOTSTUBSTACK_SIZE					(0x1000)
 
 struct bootheader {
@@ -41,6 +41,6 @@ struct bootheader {
 };
 
 /* Sanity check for struct size */
-typedef char z[(sizeof(struct bootheader) == 0x2000) ? 1 : -1];
+typedef char z[(sizeof(struct bootheader) == 0x2200) ? 1 : -1];
 
 #endif
