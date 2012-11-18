@@ -26,7 +26,6 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <endian.h>
-#include <sys/stat.h>
 
 #include "bootheader.h"
 
@@ -46,7 +45,6 @@ int main(int argc, char *argv[])
 	uint32_t tmp;
 	char buf[BUFSIZ];
 	size_t size;
-	uint32_t originSize;
 	struct bootheader *file;
 
 	if (argc != 5) {
@@ -80,12 +78,6 @@ int main(int argc, char *argv[])
 	} else
 		ERROR("ERROR reading bzImage size\n");
 
-	/* Figure out the origin size and set it */
-	if (stat(origin, &st) == 0) {
-		originSize = st.st_size;
-	} else
-		ERROR("ERROR reading origin size\n");
-
 	/* Figure out the ramdisk size and set it */
 	if (stat(ramdisk, &st) == 0) {
 		tmp = st.st_size;
@@ -107,7 +99,11 @@ int main(int argc, char *argv[])
 		fwrite(buf, 1, size, foutput);
 	}
 
-	uint32_t placeHolderSize = originSize - sizeof(struct bootheader) - file->bzImageSize - file->initrdSize;
+	uint32_t usefulSize = sizeof(struct bootheader) + file->bzImageSize + file->initrdSize;
+	uint32_t placeHolderSize = 0;
+	if (usefulSize % 512) {
+		placeHolderSize = ((usefulSize / 512) + 1) * 512 - usefulSize;
+	}
 	char placeHolder[] = {"\xFF"};
 	for (uint32_t i = 0; i < placeHolderSize; i++) {
 		fwrite(placeHolder, 1, 1, foutput);
