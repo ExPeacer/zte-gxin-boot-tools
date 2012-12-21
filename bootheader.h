@@ -37,10 +37,10 @@ typedef struct __attribute__ ((packed)) {
 	uint8_t oxff[0x180];      /* lots of 0xFF */
 	uint8_t zeros[0x46];      /* lots of zeros */
 	uint16_t bootSignature;
-} bootsector_t;
+} bootSector_t;
 
 struct bootheader {
-	bootsector_t bootsector;
+	bootSector_t bootSector;
 	uint8_t cmdline[CMDLINE_SIZE];
 	uint32_t bzImageSize;
 	uint32_t initrdSize;
