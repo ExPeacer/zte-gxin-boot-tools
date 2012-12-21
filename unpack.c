@@ -30,6 +30,7 @@
 #include "bootheader.h"
 
 #define ERROR(...) do { fprintf(stderr, __VA_ARGS__); return 1; } while(0)
+#define CMDLINE_END (0x600)
 
 int main(int argc, char *argv[])
 {
