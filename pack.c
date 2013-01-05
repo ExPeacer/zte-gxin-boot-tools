@@ -30,77 +30,86 @@
 #include "bootheader.h"
 
 #define ERROR(...) do { fprintf(stderr, __VA_ARGS__); return 1; } while(0)
-#define CMDLINE_END (0x600)
 
 int main(int argc, char *argv[])
 {
- char *origin;
+	char *origin;
 	char *bzImage;
 	char *ramdisk;
+	char *output;
 	FILE *forigin;
+	FILE *foutput;
 	FILE *fbzImage;
 	FILE *framdisk;
-	uint32_t bzImageLen;
-	uint32_t ramdiskLen;
-	uint32_t missing;
+	struct stat st;
+	uint32_t tmp;
 	char buf[BUFSIZ];
 	size_t size;
+	struct bootheader *file;
 
-	if (argc != 4)
-		ERROR("Usage: %s <image to unpack> <bzImage out> <ramdisk out>\n", argv[0]);
+	if (argc != 5) {
+		ERROR("Usage: %s <valid image> <bzImage> <ramdisk> <output>\n", argv[0]);
+	}
 
 	origin = argv[1];
 	bzImage = argv[2];
 	ramdisk = argv[3];
+	output = argv[4];
 
-	forigin = fopen(origin, "r");
-	fbzImage = fopen(bzImage, "w");
-	framdisk = fopen(ramdisk, "w");
-	if (!forigin || !bzImage || !framdisk)
-		ERROR("ERROR: failed to open origin or output images\n");
+	forigin = fopen(origin, "rb");
+	fbzImage = fopen(bzImage, "rb");
+	framdisk = fopen(ramdisk, "rb");
+	foutput = fopen(output, "wb");
+	if (!forigin || !foutput)
+		ERROR("ERROR: failed to open origin or output image\n");
 
-	/* Read bzImage length from the image to unpack */
-	if (fseek(forigin, CMDLINE_END, SEEK_SET) == -1)
-		ERROR("ERROR: failed to seek on image\n");
+	/* Allocate memory and copy bootstub to it */
+	file = malloc(sizeof(struct bootheader));
+	if (file == NULL)
+		ERROR("ERROR allocating memory\n");
 
-	if (fread(&bzImageLen, sizeof(uint32_t), 1, forigin) != 1)
-		ERROR("ERROR: failed to read bzImage length\n");
-	else
-		bzImageLen = le32toh(bzImageLen);
+	if (fread(file, sizeof(struct bootheader), 1, forigin) != 1)
+		ERROR("ERROR reading bootstub\n");
 
-	/* Read ramdisk length from the image to unpack */
-	if (fseek(forigin, (CMDLINE_END+sizeof(uint32_t)), SEEK_SET) == -1)
-		ERROR("ERROR: failed to seek on image\n");
+	/* Figure out the bzImage size and set it */
+	if (stat(bzImage, &st) == 0) {
+		tmp = st.st_size;
+		file->bzImageSize = htole32(tmp);
+	} else
+		ERROR("ERROR reading bzImage size\n");
 
-	if (fread(&ramdiskLen, sizeof(uint32_t), 1, forigin) != 1)
-		ERROR("ERROR: failed to read ramdisk length\n");
-	else
-		ramdiskLen = le32toh(ramdiskLen);
+	/* Figure out the ramdisk size and set it */
+	if (stat(ramdisk, &st) == 0) {
+		tmp = st.st_size;
+		file->initrdSize = htole32(tmp);
+	} else
+		ERROR("ERROR reading ramdisk\n");
 
-	/* Copy bzImage */
-	if (fseek(forigin, sizeof(struct bootheader), SEEK_SET) == -1)
-		ERROR("ERROR: failed to seek when copying bzImage\n");
-
-	missing = bzImageLen;
-	while (missing > 0) {
-		size = fread(buf, 1, ((missing > BUFSIZ) ? BUFSIZ : missing), forigin);
-		if (size != 0) {
-			fwrite(buf, 1, size, fbzImage);
-			missing -= size;
-		}
+	uint32_t usefulSize = sizeof(struct bootheader) + file->bzImageSize + file->initrdSize;
+	uint32_t placeHolderSize = 0;
+	if (usefulSize % 512) {
+		placeHolderSize = ((usefulSize / 512) + 1) * 512 - usefulSize;
 	}
 
-	/* Copy ramdisk */
-	if (fseek(forigin, (sizeof(struct bootheader)+bzImageLen), SEEK_SET) == -1)
-		ERROR("ERROR: failed to seek when copying ramdisk\n");
+	file->bootSector.sectors = ((usefulSize + placeHolderSize) / 512) - 1;
 
-	missing = ramdiskLen;
-	while (missing > 0) {
-		size = fread(buf, 1, ((missing > BUFSIZ) ? BUFSIZ : missing), forigin);
-		if (size != 0) {
-			fwrite(buf, 1, size, framdisk);
-			missing -= size;
-		}
+	/* Write the patched bootstub to the new image */
+	if (fwrite(file, sizeof(struct bootheader), 1, foutput) != 1)
+		ERROR("ERROR writing image\n");
+
+	/* Then copy the new bzImage */
+	while ((size = fread(buf, 1, BUFSIZ, fbzImage))) {
+		fwrite(buf, 1, size, foutput);
+	}
+
+	/* And finally copy the ramdisk */
+	while ((size = fread(buf, 1, BUFSIZ, framdisk))) {
+		fwrite(buf, 1, size, foutput);
+	}
+
+	char placeHolder[] = {"\xFF"};
+	for (uint32_t i = 0; i < placeHolderSize; i++) {
+		fwrite(placeHolder, 1, 1, foutput);
 	}
 
 	return 0;
